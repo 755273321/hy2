@@ -1,13 +1,17 @@
 #!/bin/bash
 set -e
 
-# 脚本自身真实路径。支持 bash <(curl ...)：此时 BASH_SOURCE 为 /dev/fd/N，无法作为持久路径 cp，需先落盘
+# 脚本自身真实路径。支持 bash <(curl ...)：此时 BASH_SOURCE 为 /dev/fd/N，需先落盘到可持久文件
 case "${BASH_SOURCE[0]:-$0}" in
   /dev/fd/* | /proc/self/fd/* | /proc/[0-9]*/fd/[0-9]*)
     _SB_SRC="${BASH_SOURCE[0]}"
-    SCRIPT_FILE="$(mktemp /tmp/sing-box-bootstrap.XXXXXX.sh)"
-    cat "$_SB_SRC" >"$SCRIPT_FILE"
-    chmod 700 "$SCRIPT_FILE"
+    # 优先按用户要求落到 /root，其次退回 /tmp
+    SCRIPT_FILE="/root/sing-box.sh"
+    if ! cat "$_SB_SRC" >"$SCRIPT_FILE" 2>/dev/null; then
+      SCRIPT_FILE="$(mktemp /tmp/sing-box-bootstrap.XXXXXX.sh)"
+      cat "$_SB_SRC" >"$SCRIPT_FILE"
+    fi
+    chmod 700 "$SCRIPT_FILE" 2>/dev/null || true
     unset _SB_SRC
     ;;
   *)
@@ -303,9 +307,14 @@ ensure_wrapper() {
     fi
   fi
   if [[ ! -f "$SCRIPT_FILE" ]]; then
-    echo "无法定位脚本文件: $SCRIPT_FILE"
-    echo "建议: curl -fsSL <URL> -o sing-box.sh && bash sing-box.sh ..."
-    exit 1
+    # 最后兜底：如果 manager 已存在，直接用 manager 自身作为脚本来源
+    if [[ -f "$MANAGER" ]]; then
+      SCRIPT_FILE="$MANAGER"
+    else
+      echo "无法定位脚本文件: $SCRIPT_FILE"
+      echo "建议: curl -fsSL <URL> -o /root/sing-box.sh && bash /root/sing-box.sh ..."
+      exit 1
+    fi
   fi
   # 从已安装的 sing-box-manager.sh 运行时 SCRIPT_FILE 与 MANAGER 为同一路径，勿 cp
   local _src _dst
