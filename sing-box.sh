@@ -286,8 +286,25 @@ gen_uuid() {
 
 ensure_wrapper() {
   mkdir -p "$INSTALL_DIR"
+  # bash <(curl ...)：SCRIPT_FILE 可能仍为 /dev/fd/N，或开头落盘未执行（旧版脚本）；在此从 BASH_SOURCE 再落盘一次
+  local _need=0
+  case "$SCRIPT_FILE" in
+    /dev/fd/* | /proc/self/fd/* | /proc/*/fd/*)
+      _need=1
+      ;;
+  esac
+  [[ ! -f "$SCRIPT_FILE" ]] && _need=1
+  if ((_need)); then
+    local _bs="${BASH_SOURCE[0]:-$0}"
+    if [[ -r "$_bs" ]]; then
+      SCRIPT_FILE="$(mktemp /tmp/sing-box-bootstrap.XXXXXX.sh)"
+      cat "$_bs" >"$SCRIPT_FILE"
+      chmod 700 "$SCRIPT_FILE"
+    fi
+  fi
   if [[ ! -f "$SCRIPT_FILE" ]]; then
     echo "无法定位脚本文件: $SCRIPT_FILE"
+    echo "建议: curl -fsSL <URL> -o sing-box.sh && bash sing-box.sh ..."
     exit 1
   fi
   # 从已安装的 sing-box-manager.sh 运行时 SCRIPT_FILE 与 MANAGER 为同一路径，勿 cp
@@ -334,6 +351,9 @@ exit 1
 EOF
   chmod +x "$BIN_WRAPPER"
   ln -sf "$BIN_WRAPPER" "$BIN_WRAPPER_UPPER"
+  # 部分环境 PATH 不含 /usr/local/bin，额外链到 /usr/bin 便于直接打 sb
+  ln -sf "$BIN_WRAPPER" /usr/bin/sb 2>/dev/null || true
+  ln -sf "$BIN_WRAPPER" /usr/bin/SB 2>/dev/null || true
   rm -f /usr/local/bin/sing-box
 }
 
@@ -921,7 +941,7 @@ uninstall_all() {
   stop_disable_service_if_exists
   echo "===> 删除文件"
   rm -rf "$INSTALL_DIR"
-  rm -f "$BIN_WRAPPER" "$BIN_WRAPPER_UPPER" /usr/local/bin/sing-box
+  rm -f "$BIN_WRAPPER" "$BIN_WRAPPER_UPPER" /usr/local/bin/sing-box /usr/bin/sb /usr/bin/SB
   echo "====== 已卸载 sing-box ======"
 }
 
