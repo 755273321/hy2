@@ -108,6 +108,77 @@ ensure_curl_github_ok() {
   echo "GitHub 连通性正常。"
 }
 
+# 卸载此前用「独立 apernet Hysteria2 + ~/hy3」类脚本安装的旧服务，避免与 sing-box 抢端口（如 12341）
+remove_legacy_apernet_hysteria() {
+  local had=0
+  [[ -f /etc/systemd/system/hysteria.service ]] && had=1
+  [[ -d /root/hy3 ]] && had=1
+  [[ -x /bin/hy2 ]] && had=1
+  if have_cmd systemctl; then
+    systemctl is-active --quiet hysteria.service 2>/dev/null && had=1
+    systemctl is-active --quiet ipppp.service 2>/dev/null && had=1
+  fi
+  ((had)) || return 0
+
+  echo "===> 检测到旧版独立 Hysteria2（apernet/hy3）残留，正在清理..."
+  systemctl stop hysteria.service 2>/dev/null || true
+  systemctl disable hysteria.service 2>/dev/null || true
+  rm -f /etc/systemd/system/hysteria.service 2>/dev/null || true
+  if have_cmd pkill; then
+    pkill -f 'hysteria-linux' 2>/dev/null || true
+  fi
+  rm -rf /root/hy3 2>/dev/null || true
+  rm -rf "${HOME}/hy3" 2>/dev/null || true
+  if [[ -n "${SUDO_USER:-}" && -d "/home/${SUDO_USER}/hy3" ]]; then
+    rm -rf "/home/${SUDO_USER}/hy3" 2>/dev/null || true
+  fi
+  systemctl stop ipppp.service 2>/dev/null || true
+  systemctl disable ipppp.service 2>/dev/null || true
+  rm -f /etc/systemd/system/ipppp.service 2>/dev/null || true
+  rm -f /bin/hy2 2>/dev/null || true
+  # 旧脚本常用 bing.com 自签路径（与 sing-box 证书目录无关）
+  rm -f /etc/ssl/private/bing.com.crt /etc/ssl/private/bing.com.key 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
+  echo "旧版 Hysteria2 已清理。"
+}
+
+# 卸载此前用「apt install dante-server + /etc/danted.conf」脚本装的独立 SOCKS5，避免与 sing-box SOCKS 并存
+remove_legacy_dante_socks() {
+  local had=0
+  [[ -f /etc/danted.conf ]] && had=1
+  [[ -f /root/socks.sh ]] && had=1
+  if have_cmd systemctl; then
+    systemctl is-active --quiet danted.service 2>/dev/null && had=1
+  fi
+  ((had)) || return 0
+
+  echo "===> 检测到旧版 Dante SOCKS（danted）残留，正在清理..."
+  systemctl stop danted.service 2>/dev/null || true
+  systemctl disable danted.service 2>/dev/null || true
+  if have_cmd pkill; then
+    pkill -x danted 2>/dev/null || true
+  fi
+  rm -f /etc/danted.conf /etc/danted.conf.bak 2>/dev/null || true
+  rm -f /root/socks.sh 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
+  if have_cmd apt-get && have_cmd dpkg && dpkg -l dante-server 2>/dev/null | grep -q '^ii'; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get remove -y --purge dante-server 2>/dev/null || true
+  elif have_cmd rpm && rpm -q dante-server 2>/dev/null | grep -q dante-server; then
+    if have_cmd dnf; then
+      dnf remove -y dante-server 2>/dev/null || true
+    elif have_cmd yum; then
+      yum remove -y dante-server 2>/dev/null || true
+    fi
+  fi
+  echo "Dante SOCKS 已清理。（脚本创建的 Linux 用户如 huise123 不会自动删除，不需要可手动 userdel）"
+}
+
+remove_legacy_third_party_proxies() {
+  remove_legacy_apernet_hysteria
+  remove_legacy_dante_socks
+}
+
 load_state() {
   ENABLE_HY2=0
   ENABLE_REALITY=0
@@ -374,6 +445,9 @@ write_config() {
   load_state
   mkdir -p "$INSTALL_DIR"
   ensure_ids
+  if [[ "${ENABLE_HY2:-0}" -eq 1 ]] || [[ "${ENABLE_SOCKS:-0}" -eq 1 ]]; then
+    remove_legacy_third_party_proxies
+  fi
 
   local uuid short_id
   uuid="$(cat "$INSTALL_DIR/uuid.txt")"
@@ -687,6 +761,7 @@ export_all_nodes() {
 install_core() {
   require_root
   ensure_deps
+  remove_legacy_third_party_proxies
   echo "===> 创建目录"
   mkdir -p "$INSTALL_DIR"
   download_core
