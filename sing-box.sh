@@ -1,8 +1,21 @@
 #!/bin/bash
 set -e
 
-# 脚本自身绝对路径（download_core 会 cd /tmp，不能用 $0 相对路径去 cp）
-SCRIPT_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+# 脚本自身真实路径。支持 bash <(curl ...)：此时 BASH_SOURCE 为 /dev/fd/N，无法作为持久路径 cp，需先落盘
+case "${BASH_SOURCE[0]:-$0}" in
+  /dev/fd/* | /proc/self/fd/* | /proc/[0-9]*/fd/[0-9]*)
+    _SB_SRC="${BASH_SOURCE[0]}"
+    SCRIPT_FILE="$(mktemp /tmp/sing-box-bootstrap.XXXXXX.sh)"
+    cat "$_SB_SRC" >"$SCRIPT_FILE"
+    chmod 700 "$SCRIPT_FILE"
+    unset _SB_SRC
+    ;;
+  *)
+    _SB_SRC="${BASH_SOURCE[0]}"
+    SCRIPT_FILE="$(cd "$(dirname "$_SB_SRC")" && pwd)/$(basename "$_SB_SRC")"
+    unset _SB_SRC
+    ;;
+esac
 
 INSTALL_DIR="/usr/local/sing-box"
 BIN_REAL="$INSTALL_DIR/sing-box-bin"
