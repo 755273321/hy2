@@ -1,26 +1,8 @@
 #!/bin/bash
 set -e
 
-# 脚本自身真实路径。支持 bash <(curl ...)：此时 BASH_SOURCE 为 /dev/fd/N，需先落盘后再重启执行
-case "${BASH_SOURCE[0]:-$0}" in
-  /dev/fd/* | /proc/self/fd/* | /proc/[0-9]*/fd/[0-9]*)
-    # 注意：不能直接 cat 同一个 /dev/fd/N（会把当前脚本流提前读空，表现为“没反应”）
-    # 这里改为按固定 URL 重新下载后再 exec 自己。
-    SB_SELF_URL="${SB_SELF_URL:-https://raw.githubusercontent.com/755273321/hy2/refs/heads/main/sing-box.sh}"
-    SCRIPT_FILE="/root/sing-box.sh"
-    if ! curl -fsSL "$SB_SELF_URL" -o "$SCRIPT_FILE" 2>/dev/null; then
-      SCRIPT_FILE="/tmp/sing-box.sh"
-      curl -fsSL "$SB_SELF_URL" -o "$SCRIPT_FILE"
-    fi
-    chmod 700 "$SCRIPT_FILE" 2>/dev/null || true
-    exec bash "$SCRIPT_FILE" "$@"
-    ;;
-  *)
-    _SB_SRC="${BASH_SOURCE[0]}"
-    SCRIPT_FILE="$(cd "$(dirname "$_SB_SRC")" && pwd)/$(basename "$_SB_SRC")"
-    unset _SB_SRC
-    ;;
-esac
+# 脚本自身路径（在 bash / sh 直接执行场景下足够；支持 bash <(curl ...) 直接使用 BASH_SOURCE 即可）
+SCRIPT_FILE="${BASH_SOURCE[0]:-$0}"
 
 INSTALL_DIR="/usr/local/sing-box"
 BIN_REAL="$INSTALL_DIR/sing-box-bin"
