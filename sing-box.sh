@@ -634,7 +634,17 @@ show_info() {
 }
 
 get_public_ip() {
-  curl -fsSL ifconfig.me 2>/dev/null || curl -fsSL api.ipify.org 2>/dev/null || echo "127.0.0.1"
+  # 优先 IPv4
+  local ip
+  ip="$(curl -4 -fsSL ifconfig.me 2>/dev/null || curl -4 -fsSL api.ipify.org 2>/dev/null)"
+
+  # 如果 IPv4 失败，再用 IPv6
+  if [[ -z "$ip" ]]; then
+    ip="$(curl -6 -fsSL ifconfig.me 2>/dev/null || curl -6 -fsSL api.ipify.org 2>/dev/null)"
+  fi
+
+  # 最后兜底
+  echo "${ip:-127.0.0.1}"
 }
 
 socks_should_export() {
